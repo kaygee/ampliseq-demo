@@ -3,19 +3,16 @@ package com.thermofisher;
 import static org.junit.Assert.fail;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.io.InputStream;
+import java.util.Properties;
 
 import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExternalResource;
 import org.openqa.selenium.By;
-import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -24,24 +21,22 @@ import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxProfile;
 import org.openqa.selenium.firefox.UnableToCreateProfileException;
 import org.openqa.selenium.remote.UnreachableBrowserException;
-import org.openqa.selenium.support.ui.*;
+import org.openqa.selenium.support.ui.ExpectedCondition;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
-import com.opencsv.CSVReader;
 import com.thermofisher.util.WaitDriverWaitFactory;
 
 public class SubmitAmpliSeqDesigns {
 
     private static final Logger LOG = LoggerFactory.getLogger(SubmitAmpliSeqDesigns.class);
+    private static final String CONFIG_FILE_NAME = "config.properties";
+    private static final Properties CONFIG_PROPERTIES = new Properties();
     private WebDriver driver;
     private WebDriverWait wait;
-
-    private static final String DRIVER_TYPE = "chrome";
-    private static final String FIREFOX_BINARY = "/Applications/Firefox.31.7.0.esr.app/Contents/MacOS/firefox-bin";
-    private static final String CHROME_BINARY = "/usr/local/bin/chromedriver";
-    private static final String TARGETS_CSV_FILE = "resources/IAD28979_targets.csv";
 
     private static final By DISABLED_EXPLANATION = By.cssSelector(".disabled-explanation");
     private static final By SESSION_CHECK_MESSAGE = By.cssSelector("#lifetechSessionCheckMsg");
@@ -53,39 +48,51 @@ public class SubmitAmpliSeqDesigns {
     private static final By NEXT_ADD_TARGETS_BUTTON = By.cssSelector("#saveDesign");
     private static final By FILE_CONTROL = By.cssSelector("[id$='_targetsFile']");
 
-    @Test
-    public void addTargetsToDesign() {
-        navigateToGetTargets();
-        addGeneCdsOnlyTarget("BRCA1");
-        addRegionTarget("name", "chr14", "95577648", "95577797");
+    @Before
+    public void setUp() {
+        loadProperties();
+        driver = provideDriver(getProperty("driver.type"));
+        Preconditions.checkNotNull(getWebDriver(), "Failed to set up the WebDriver");
+        this.setWait(WaitDriverWaitFactory.createWait(getWebDriver()));
+        getWebDriver().get(getProperty("target.url"));
     }
 
-    @Test
-    public void addTargetsFromCSVFile() {
-        navigateToGetTargets();
-
-        List<String[]> targets = getTargetsFromCSV(TARGETS_CSV_FILE);
-        for (String[] currentLine : targets) {
-            if (currentLine[0].equals("REGION")) {
-                addRegionTarget(currentLine[1], currentLine[2], currentLine[3], currentLine[4]);
-            } else if (currentLine[0].equals("GENE_CDS")) {
-                addGeneCdsOnlyTarget(currentLine[1]);
+    @After
+    public void tearDown() {
+        if (getWebDriver() != null) {
+            try {
+                getWebDriver().manage().deleteAllCookies();
+                getWebDriver().quit();
+            } catch (UnreachableBrowserException ube) {
+                LOG.error(ube.getMessage(), ube);
             }
         }
     }
 
     @Test
     public void addTargetsByUpload() {
-        navigateToGetTargets();
+        clickSignIn();
+        login();
+        setDesignName(RandomStringUtils.randomAlphanumeric(35));
+        clickNextAddTargets();
         clickUploadFileTab();
-        chooseFileAndClickUpload("/Users/kgann/src/ampliseq-demo/" + TARGETS_CSV_FILE);
+        chooseFileAndClickUpload("resources/IAD28979_targets.csv");
     }
 
     private void chooseFileAndClickUpload(String file) {
+        String absoluteFilePath = getAbsoluteFilePath(file);
         WebElement chooseFileElement = waitForSomething(ExpectedConditions.presenceOfElementLocated(FILE_CONTROL));
-        chooseFileElement.sendKeys(file);
+        chooseFileElement.sendKeys(absoluteFilePath);
         waitForVisiblityAndClick(By.cssSelector("#uploadTargets"));
         waitForSomething(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector(".jquery-msg-content")));
+    }
+
+    private String getAbsoluteFilePath(String filename) {
+        File file = new File(filename);
+        if (file.exists()) {
+            return file.getAbsolutePath();
+        }
+        return null;
     }
 
     private void clickUploadFileTab() {
@@ -94,50 +101,18 @@ public class SubmitAmpliSeqDesigns {
         waitForSomething(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#uploadTargets")));
     }
 
-    private void navigateToGetTargets() {
-        getWebDriver().get("https://www.ampliseq.com");
-        clickSignIn();
-        login("kgann@5amsolutions.com", "undebeC8");
-        setDesignName(RandomStringUtils.randomAlphanumeric(35));
-        setDesignDescription("Everything is awesome!");
-        if (isMoreDisplayed()) {
-            clickMore();
-        }
-        clickNextAddTargets();
-    }
-
-    private boolean isMoreDisplayed() {
-        List<WebElement> elements = getWebDriver().findElements(By.cssSelector("#expandNewDesignFormDiv"));
-        if (elements.size() > 1) {
-            fail("Didn't expect more than one More button.");
-        }
-        WebElement moreElement = elements.get(0);
-        String style = moreElement.getAttribute("style");
-        if (style.equals("display: none;")) {
-            return false;
-        }
-        return true;
-    }
-
-    private List<String[]> getTargetsFromCSV(String filename) {
-        CSVReader reader;
-        try {
-            reader = new CSVReader(new FileReader(filename), ',', '\'', 1);
-            return reader.readAll();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
     private void clickSignIn() {
         waitForSomething(ExpectedConditions.elementToBeClickable(SIGN_IN_BUTTON));
         getWebDriver().findElement(SIGN_IN_BUTTON).click();
     }
 
-    private void login(String username, String password) {
+    private void login() {
+        String username = getProperty("user.name");
+        String password = getProperty("user.password");
+        loginAs(username, password);
+    }
+
+    private void loginAs(String username, String password) {
         waitForSomething(ExpectedConditions.invisibilityOfElementLocated(DISABLED_EXPLANATION));
         waitForSomething(ExpectedConditions.invisibilityOfElementLocated(SESSION_CHECK_MESSAGE));
         waitForSomething(ExpectedConditions.elementToBeClickable(SIGN_IN_BUTTON));
@@ -146,15 +121,12 @@ public class SubmitAmpliSeqDesigns {
         getWebDriver().findElement(SIGN_IN_BUTTON).click();
     }
 
-    private void clickMore() {
-        waitForVisiblityAndClick(MORE_BUTTON);
-    }
-
     private void clickSubmitTargets() {
         getWebDriver().findElement(SUBMIT_TARGETS_BUTTON);
     }
 
     private void clickNextAddTargets() {
+        waitForSomething(ExpectedConditions.invisibilityOfElementLocated(MORE_BUTTON));
         waitForVisiblityAndClick(NEXT_ADD_TARGETS_BUTTON);
         waitForSomething(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#targetRegion_new_type_td")));
         waitForSomething(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#targetRegion_new_name_td")));
@@ -164,10 +136,6 @@ public class SubmitAmpliSeqDesigns {
     private void setDesignName(String name) {
         waitForVisibilityAndSendKeys("#designName", name);
         waitForSomething(ExpectedConditions.invisibilityOfElementLocated(MORE_BUTTON));
-    }
-
-    private void setDesignDescription(String description) {
-        waitForVisibilityAndSendKeys("#designDescription", description);
     }
 
     private void waitForVisiblityAndClick(By locator) {
@@ -180,93 +148,14 @@ public class SubmitAmpliSeqDesigns {
         getWebDriver().findElement(By.cssSelector(cssSelector)).sendKeys(text);
     }
 
-    private void addGeneCdsOnlyTarget(String name) {
-        getWebDriver().findElement(By.cssSelector("[value='GENE_CDS']")).click();
-        getWebDriver().findElement(By.cssSelector("#targetRegion_new_name")).sendKeys(name);
-        clickAddTarget();
-    }
-
-    private void addGeneCdsAndUtrTarget(String name) {
-        getWebDriver().findElement(By.cssSelector("[value='GENE_EXONS']")).click();
-        getWebDriver().findElement(By.cssSelector("#targetRegion_new_name")).sendKeys(name);
-        clickAddTarget();
-    }
-
-    private void addRegionTarget(String name, String chrom, String start, String end) {
-        getWebDriver().findElement(By.cssSelector("[value='REGION']")).click();
-        clearAndSendKeys(By.cssSelector("#targetRegion_new_name"), name);
-        clearAndSendKeys(By.cssSelector("input#targetRegion_new_chr"), chrom);
-        clearAndSendKeys(By.cssSelector("input#targetRegion_new_startPos"), start);
-        clearAndSendKeys(By.cssSelector("input#targetRegion_new_endPos"), end);
-        clickAddTarget();
-    }
-
-    private void clearAndSendKeys(By by, String text) {
-        getWebDriver().findElement(by).clear();
-        getWebDriver().findElement(by).sendKeys(text);
-    }
-
-    private void clickAddTarget() {
-        int beforeAddCount = getWebDriver().findElements(By.cssSelector("#targetsTable .target-edit")).size();
-
-        waitForSomething(ExpectedConditions.elementToBeClickable(By.cssSelector("#targetRegion_new_saveTarget")))
-                .click();
-        waitForSomething(ExpectedConditions.elementToBeClickable(By.cssSelector("#targetRegion_new_saveTarget")));
-
-        waitUntilTargetAddedSuccessfully(String.valueOf(beforeAddCount));
-    }
-
-    private boolean waitUntilTargetAddedSuccessfully(String amount) {
-        Wait<String> wait = new FluentWait<>(amount).withTimeout(10, TimeUnit.SECONDS).pollingEvery(500,
-                TimeUnit.MILLISECONDS);
-        try {
-            return wait.until(count -> {
-                int oldCount = Integer.valueOf(count);
-                return getWebDriver().findElements((By.cssSelector("#targetsTable .target-edit"))).size() > oldCount;
-
-            });
-        } catch (TimeoutException e) {
-            return false;
-        }
-    }
-
-    @Rule
-    public ExternalResource externalResource = new ExternalResource() {
-        @Override
-        protected void before() throws Throwable {
-            driver = provideDriver(DRIVER_TYPE);
-        }
-
-        @Override
-        protected void after() {
-            try {
-                getWebDriver().manage().deleteAllCookies();
-                getWebDriver().quit();
-            } catch (UnreachableBrowserException ube) {
-                LOG.error(ube.getMessage(), ube);
-            }
-        }
-    };
-
-    /**
-     * Prepare the test.
-     *
-     * @exception Exception if set up fails.
-     */
-    @Before
-    public void setUp() throws Exception {
-        Preconditions.checkNotNull(getWebDriver(), "Failed to set up the WebDriver");
-        this.setWait(WaitDriverWaitFactory.createWait(driver));
-    }
-
     /**
      * @return the webDriver
      */
-    public WebDriver getWebDriver() {
+    private WebDriver getWebDriver() {
         return this.driver;
     }
 
-    public WebDriver provideDriver(String driverType) {
+    private WebDriver provideDriver(String driverType) {
         WebDriver driver;
         if ("chrome".equals(driverType)) {
             driver = provideChromeDriver();
@@ -275,14 +164,14 @@ public class SubmitAmpliSeqDesigns {
             FirefoxProfile profile = getFirefoxProfile();
             driver = provideFirefoxDriver(binary, profile);
         } else {
-            throw new IllegalArgumentException("Illegal value for selenium.driver.type: " + driverType);
+            throw new IllegalArgumentException("Illegal value for driver.type: " + driverType);
         }
 
         return driver;
     }
 
     private WebDriver provideChromeDriver() {
-        System.setProperty("webdriver.chrome.driver", CHROME_BINARY);
+        System.setProperty("webdriver.chrome.driver", getProperty("chromedriver.binary.location"));
         final WebDriver driver = new ChromeDriver();
         return driver;
     }
@@ -294,7 +183,7 @@ public class SubmitAmpliSeqDesigns {
 
     private FirefoxBinary getFirefoxBinary() {
         FirefoxBinary binary = null;
-        File binaryDir = new File(FIREFOX_BINARY);
+        File binaryDir = new File(getProperty("firefox.binary.location"));
         if (binaryDir.exists()) {
             binary = new FirefoxBinary(binaryDir);
             // Set timeout to wait for binary, (2 minutes).
@@ -318,6 +207,19 @@ public class SubmitAmpliSeqDesigns {
         }
     }
 
+    private void loadProperties() {
+        try {
+            InputStream input = new FileInputStream(CONFIG_FILE_NAME);
+            CONFIG_PROPERTIES.load(input);
+        } catch (IOException e) {
+            fail(e.getMessage());
+        }
+    }
+
+    private String getProperty(String key) {
+        return CONFIG_PROPERTIES.getProperty(key);
+    }
+
     public <U> U waitForSomething(ExpectedCondition<U> toWaitFor) {
         try {
             return getWait().until(toWaitFor);
@@ -330,14 +232,14 @@ public class SubmitAmpliSeqDesigns {
     /**
      * @return the wait).
      */
-    protected WebDriverWait getWait() {
+    private WebDriverWait getWait() {
         return wait;
     }
 
     /**
      * @param wait the wait to set.
      */
-    protected void setWait(WebDriverWait wait) {
+    private void setWait(WebDriverWait wait) {
         this.wait = wait;
     }
 

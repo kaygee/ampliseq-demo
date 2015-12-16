@@ -199,7 +199,8 @@
     <output url="file://$PROJECT_DIR$/out" />
   </component>
   <component name="VcsDirectoryMappings">
-    <mapping directory="" vcs="" />
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java-selenium-demo" vcs="Git" />
   </component>
   <component name="libraryTable">
     <library name="Maven: cglib:cglib-nodep:2.1_3">

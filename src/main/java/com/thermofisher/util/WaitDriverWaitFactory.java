@@ -15,11 +15,9 @@ public class WaitDriverWaitFactory {
          */
         public static final int SLEEP_IN_BETWEEN_POLLING_MILLIS = 50;
 
-        public static final int LONG_TIMEOUT_IN_SECONDS = ConfigUtil.getEnvVarOrPropertyAsIntWithDefault(
-                "ionreporter.selenium.longTimeoutInSeconds", 30);
+        public static final int LONG_TIMEOUT_IN_SECONDS = 30;
 
-        public static final int DEFAULT_TIMEOUT_IN_SECONDS = ConfigUtil.getEnvVarOrPropertyAsIntWithDefault(
-                "ionreporter.selenium.defaultTimeoutInSeconds", 30);
+        public static final int DEFAULT_TIMEOUT_IN_SECONDS = 30;
 
         public static WebDriverWait createWait(WebDriver driver) {
             return createWait(driver, DEFAULT_TIMEOUT_IN_SECONDS);
