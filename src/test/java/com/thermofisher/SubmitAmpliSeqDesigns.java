@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
+import com.sun.istack.internal.Nullable;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -38,15 +39,21 @@ public class SubmitAmpliSeqDesigns {
     private WebDriver driver;
     private WebDriverWait wait;
 
+    private static final By CONFIRM_SUBMISSION_PANEL = By.id("submissionConfirmationPanel");
+    private static final By CONFIRM_SUBMISSION_COMMENTS = By.id("submissionComments");
+    private static final By OK_BUTTON = By.id("submitOkBtn");
+    private static final By DESIGN_NAME = By.id("designName");
     private static final By DISABLED_EXPLANATION = By.cssSelector(".disabled-explanation");
-    private static final By SESSION_CHECK_MESSAGE = By.cssSelector("#lifetechSessionCheckMsg");
-    private static final By SIGN_IN_BUTTON = By.cssSelector("#signInButton");
-    private static final By USERNAME_FIELD = By.cssSelector("#username");
-    private static final By PASSWORD_FIELD = By.cssSelector("#password");
-    private static final By MORE_BUTTON = By.cssSelector("#expandNewDesignFormDiv");
-    private static final By SUBMIT_TARGETS_BUTTON = By.cssSelector("#submitDesignJob");
-    private static final By NEXT_ADD_TARGETS_BUTTON = By.cssSelector("#saveDesign");
+    private static final By SESSION_CHECK_MESSAGE = By.id("lifetechSessionCheckMsg");
+    private static final By SIGN_IN_BUTTON = By.id("signInButton");
+    private static final By USERNAME_FIELD = By.id("username");
+    private static final By PASSWORD_FIELD = By.id("password");
+    private static final By MORE_BUTTON = By.id("expandNewDesignFormDiv");
+    private static final By SUBMIT_TARGETS_BUTTON = By.id("submitDesignJob");
+    private static final By NEXT_ADD_TARGETS_BUTTON = By.id("saveDesign");
     private static final By FILE_CONTROL = By.cssSelector("[id$='_targetsFile']");
+    private static final By WAIT_SCREEN = By.cssSelector(".waitscreen");
+    private static final By SPINNER = By.cssSelector(".spinner");
 
     @Before
     public void setUp() {
@@ -71,20 +78,33 @@ public class SubmitAmpliSeqDesigns {
 
     @Test
     public void addTargetsByUpload() {
-        clickSignIn();
+        clickSignInButton();
         login();
         setDesignName(RandomStringUtils.randomAlphanumeric(35));
         clickNextAddTargets();
         clickUploadFileTab();
         chooseFileAndClickUpload("resources/IAD28979_targets.csv");
+        clickSubmitTargets();
+        confirmSubmission(RandomStringUtils.randomAlphabetic(25));
+    }
+
+    private void confirmSubmission(String comment) {
+        waitForSomething(ExpectedConditions.visibilityOfElementLocated(CONFIRM_SUBMISSION_PANEL));
+        waitForVisibilityAndSendKeys(CONFIRM_SUBMISSION_COMMENTS, comment);
+        waitForVisiblityAndClick(OK_BUTTON);
     }
 
     private void chooseFileAndClickUpload(String file) {
         String absoluteFilePath = getAbsoluteFilePath(file);
+        Preconditions.checkNotNull(absoluteFilePath);
+        LOG.info("Choosing file [" + absoluteFilePath + "].");
         WebElement chooseFileElement = waitForSomething(ExpectedConditions.presenceOfElementLocated(FILE_CONTROL));
         chooseFileElement.sendKeys(absoluteFilePath);
         waitForVisiblityAndClick(By.cssSelector("#uploadTargets"));
         waitForSomething(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector(".jquery-msg-content")));
+        waitForSomething(ExpectedConditions.invisibilityOfElementLocated(WAIT_SCREEN));
+        waitForSomething(ExpectedConditions.invisibilityOfElementLocated(SPINNER));
+        waitForSomething(ExpectedConditions.visibilityOfElementLocated(SUBMIT_TARGETS_BUTTON));
     }
 
     private String getAbsoluteFilePath(String filename) {
@@ -101,7 +121,7 @@ public class SubmitAmpliSeqDesigns {
         waitForSomething(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#uploadTargets")));
     }
 
-    private void clickSignIn() {
+    private void clickSignInButton() {
         waitForSomething(ExpectedConditions.elementToBeClickable(SIGN_IN_BUTTON));
         getWebDriver().findElement(SIGN_IN_BUTTON).click();
     }
@@ -122,7 +142,7 @@ public class SubmitAmpliSeqDesigns {
     }
 
     private void clickSubmitTargets() {
-        getWebDriver().findElement(SUBMIT_TARGETS_BUTTON);
+        waitForVisiblityAndClick(SUBMIT_TARGETS_BUTTON);
     }
 
     private void clickNextAddTargets() {
@@ -134,7 +154,7 @@ public class SubmitAmpliSeqDesigns {
     }
 
     private void setDesignName(String name) {
-        waitForVisibilityAndSendKeys("#designName", name);
+        waitForVisibilityAndSendKeys(DESIGN_NAME, name);
         waitForSomething(ExpectedConditions.invisibilityOfElementLocated(MORE_BUTTON));
     }
 
@@ -143,14 +163,11 @@ public class SubmitAmpliSeqDesigns {
         getWebDriver().findElement(locator).click();
     }
 
-    private void waitForVisibilityAndSendKeys(String cssSelector, String text) {
-        waitForSomething(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(cssSelector)));
-        getWebDriver().findElement(By.cssSelector(cssSelector)).sendKeys(text);
+    private void waitForVisibilityAndSendKeys(By locator, String text) {
+        waitForSomething(ExpectedConditions.visibilityOfElementLocated(locator));
+        getWebDriver().findElement(locator).sendKeys(text);
     }
 
-    /**
-     * @return the webDriver
-     */
     private WebDriver getWebDriver() {
         return this.driver;
     }
